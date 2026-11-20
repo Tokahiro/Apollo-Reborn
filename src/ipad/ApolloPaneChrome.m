@@ -6,6 +6,7 @@
 #import <objc/message.h>
 #import "../ApolloThemeRuntime.h"
 #import "../ApolloActionMenu.h"
+#import "../ApolloActionMenuLayout.h"
 #import "../ApolloNativeActionMenus.h"
 #import "../ApolloCommon.h"
 #import "../ApolloImmersiveHeaderBackground.h"
@@ -218,8 +219,6 @@ void ApolloPaneSetComfortableFeed(UIViewController *controller, BOOL comfortable
 static char kPaneDensityPrepared;
 static char kPaneOriginalExtendedEdges;
 static char kPaneHeaderColor;
-static char kPaneMenuOwner;
-static __weak UIViewController *sPaneMenuOwner;
 
 void ApolloPaneApplySearchPlacement(UIViewController *controller) {
     if (!controller.navigationItem.searchController) return;
@@ -302,22 +301,14 @@ void ApolloPaneInstallChromeForController(UIViewController *controller) {
     }
 }
 
-UIViewController *ApolloPaneSetMenuOwner(UIViewController *controller) {
-    UIViewController *previous = sPaneMenuOwner;
-    sPaneMenuOwner = ApolloPaneSplitControllerFor(controller) ? controller : nil;
-    return previous;
-}
-
-void ApolloPaneCaptureMenuOwner(id actionController) {
-    if (!sPaneMenuOwner || ![actionController isKindOfClass:objc_getClass("_TtC6Apollo16ActionController")]) return;
-    if (objc_getAssociatedObject(actionController, &kPaneMenuOwner)) return;
-    NSHashTable *owner = [NSHashTable weakObjectsHashTable];
-    [owner addObject:sPaneMenuOwner];
-    objc_setAssociatedObject(actionController, &kPaneMenuOwner, owner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
+// The feed or post screen inside a pane whose nav-bar ••• opened this sheet.
+// The context keeps it to those two menus (the profile ••• also arms an owner).
 static UIViewController *ApolloPaneMenuOwner(id actionController) {
-    return [objc_getAssociatedObject(actionController, &kPaneMenuOwner) anyObject];
+    NSString *context = ApolloActionMenuContextForController(actionController);
+    if (![context isEqualToString:ApolloActionMenuContextFeed] &&
+        ![context isEqualToString:ApolloActionMenuContextPostDetail]) return nil;
+    UIViewController *owner = ApolloActionMenuOwnerForController(actionController);
+    return ApolloPaneSplitControllerFor(owner) ? owner : nil;
 }
 
 @interface ApolloPaneViewOption : NSObject

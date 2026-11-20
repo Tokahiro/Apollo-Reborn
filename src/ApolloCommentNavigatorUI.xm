@@ -19,7 +19,6 @@
 
 static NSString *const kCNTitle = @"Jump Button Navigation";
 static char kCNSettingsCellKey;
-static char kCNMenuOwnerKey;
 
 // Short enough to fit beside "Jump Button Navigation" in the settings row.
 static NSArray<NSString *> *CNModeTitles(void) {
@@ -102,49 +101,13 @@ static UITableViewCell *CNSettingsCell(UIViewController *vc, UITableViewCell *do
     return cell;
 }
 
-// The action-menu context is captured by the existing presentation owner.
-// Resolve its visible comments screen once, then retain it weakly on that
-// exact ActionController. The legacy owner dismisses before invoking perform,
-// so looking at presentingViewController only at tap time would be too late.
-static UIViewController *CNVisibleCommentsController(UIViewController *vc) {
-    if (!vc || !vc.viewIfLoaded.window) return nil;
-    UIViewController *found = CNVisibleCommentsController(vc.presentedViewController);
-    if (found) return found;
-    // topViewController, not visibleViewController: the legacy More sheet
-    // asks for its rows once presented, and visibleViewController is then
-    // that sheet rather than the comments screen under it.
-    if ([vc isKindOfClass:UINavigationController.class]) {
-        return CNVisibleCommentsController(((UINavigationController *)vc).topViewController);
-    }
-    if ([vc isKindOfClass:UITabBarController.class]) {
-        return CNVisibleCommentsController(((UITabBarController *)vc).selectedViewController);
-    }
-    // On iPad the visible comments controller can live in a split container.
-    for (UIViewController *child in vc.childViewControllers.reverseObjectEnumerator) {
-        found = CNVisibleCommentsController(child);
-        if (found) return found;
-    }
-    return ApolloClassCommentsViewController && [vc isKindOfClass:ApolloClassCommentsViewController] ? vc : nil;
-}
-
-static UIViewController *CNMenuOwner(id controller, BOOL claim) {
-    NSHashTable *holder = objc_getAssociatedObject(controller, &kCNMenuOwnerKey);
-    if (holder || !claim) return holder.anyObject;
+// The comments screen whose nav-bar More opened this sheet, held weakly on
+// the ActionController by the action-menu owner.
+static UIViewController *CNMenuOwner(id controller) {
     if (![ApolloActionMenuContextForController(controller) isEqualToString:ApolloActionMenuContextPostDetail]) return nil;
-
-    UIViewController *owner = CNVisibleCommentsController(((UIViewController *)controller).presentingViewController);
-    if (!owner) {
-        for (UIWindow *window in ApolloAllWindows()) {
-            if (!window.isKeyWindow) continue;
-            owner = CNVisibleCommentsController(window.rootViewController);
-            if (owner) break;
-        }
-    }
-    if (!owner) return nil;
-    holder = [NSHashTable weakObjectsHashTable];
-    [holder addObject:owner];
-    objc_setAssociatedObject(controller, &kCNMenuOwnerKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    return owner;
+    UIViewController *owner = ApolloActionMenuOwnerForController(controller);
+    Class commentsClass = ApolloClassCommentsViewController;
+    return commentsClass && [owner isKindOfClass:commentsClass] ? owner : nil;
 }
 
 // Set only for the duration of the synchronous More-tap that reopens the
@@ -196,7 +159,7 @@ void ApolloCommentNavigatorPreparePresentation(UIViewController *controller) {
     spec.placement = ApolloActionMenuPlacementAppend;
     spec.legacyDismissesSheet = YES;
     spec.matches = ^BOOL(id controller, __unused NSString *menuTitle) {
-        return CNMenuOwner(controller, YES) != nil;
+        return CNMenuOwner(controller) != nil;
     };
     spec.title = ^NSString *(__unused id controller, __unused UITableViewCell *donor) {
         return @"Jump Button Navigation";
@@ -214,7 +177,7 @@ void ApolloCommentNavigatorPreparePresentation(UIViewController *controller) {
         // Standard builds have no nested menus. Once the More sheet has
         // dismissed, reopen Apollo's own More sheet from the same screen and
         // swap its rows for the two modes (see ApolloCommentNavigatorPreparePresentation).
-        UIViewController *owner = CNMenuOwner(controller, NO);
+        UIViewController *owner = CNMenuOwner(controller);
         SEL selector = @selector(moreOptionsBarButtonItemTappedWithSender:);
         if (!owner.viewIfLoaded.window || ![owner respondsToSelector:selector]) return;
         sCNModeSheetOwner = owner;

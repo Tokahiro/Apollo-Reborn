@@ -212,8 +212,23 @@ UIViewController *ApolloActionMenuOwnerForController(id controller) {
     return [(NSHashTable *)objc_getAssociatedObject(controller, &kApolloActionMenuControllerOwnerKey) anyObject];
 }
 
+// The first sheet built while an owner is armed claims it, with or without a
+// context (the profile ••• arms an owner but no context). Owners are armed
+// only by nav-bar ••• taps, so a moderator sheet never takes one.
+static void ApolloActionMenuClaimArmedOwner(id controller) {
+    UIViewController *owner = sApolloActionMenuArmedOwner;
+    if (!owner || objc_getAssociatedObject(controller, &kApolloActionMenuControllerOwnerKey)) return;
+    if (ApolloActionMenuControllerIsModeratorOnly(controller)) return;
+    // Weak, so an open sheet never keeps its screen alive.
+    NSHashTable *holder = [NSHashTable weakObjectsHashTable];
+    [holder addObject:owner];
+    objc_setAssociatedObject(controller, &kApolloActionMenuControllerOwnerKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    sApolloActionMenuArmedOwner = nil;
+}
+
 void ApolloActionMenuCaptureContextForController(id controller) {
     if (![controller isKindOfClass:ApolloClassActionController]) return;
+    ApolloActionMenuClaimArmedOwner(controller);
     if (objc_getAssociatedObject(controller, &kApolloActionMenuControllerContextKey)) return;
     ApolloActionMenuContext context = ApolloActionMenuTakeArmedContext();
     if (!context) return;
@@ -231,14 +246,6 @@ void ApolloActionMenuCaptureContextForController(id controller) {
         return;
     }
     objc_setAssociatedObject(controller, &kApolloActionMenuControllerContextKey, context, OBJC_ASSOCIATION_COPY_NONATOMIC);
-    UIViewController *owner = sApolloActionMenuArmedOwner;
-    if (owner) {
-        // Weak, so an open sheet never keeps its feed alive.
-        NSHashTable *holder = [NSHashTable weakObjectsHashTable];
-        [holder addObject:owner];
-        objc_setAssociatedObject(controller, &kApolloActionMenuControllerOwnerKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        sApolloActionMenuArmedOwner = nil;
-    }
 }
 
 NSString *ApolloActionMenuContextForController(id controller) {

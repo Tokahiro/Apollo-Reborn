@@ -12,17 +12,15 @@
 // where it's positioned is a declarative ApolloActionMenuSpec registered below.
 //
 // Which sheet is ours: the "..." menu has no header title to match on, so we
-// arm on -[PostsViewController moreOptionsBarButtonItemTappedWithSender:] and
-// let the first ActionController built inside a short grace window claim the
-// arm. The claim is recorded on the controller (via ApolloActionMenu's own
-// per-controller memoization of `matches`, which only ever runs this once per
-// sheet instance), so no later, unrelated sheet can pick it up.
+// use the screen whose nav-bar "..." built the sheet
+// (ApolloActionMenuOwnerForController, armed by ApolloNativeActionMenus.xm)
+// when that screen is a feed or a profile.
 //
 // Which screens get the row: every feed that has a listing behind it. Subreddit
 // slugs, canonical multireddit paths and the Popular/All/Mod pseudo-subreddit
 // slugs all come from ApolloSubredditHeaders, whose helpers gate on Apollo's own
 // PostsType tag; Home is resolved here, as is a user profile (its "..." arms on
-// ProfileViewController below, resolved to "u/<name>"). The signed-in user's own
+// ProfileViewController, resolved to "u/<name>"). The signed-in user's own
 // profile tab has no native "..." at all, so ApolloProfileMoreMenu.xm builds one
 // with Gallery View built in. Search results and every unrelated sheet resolve
 // to nil, which is what keeps the row off them.
@@ -56,44 +54,17 @@ extern NSString *ApolloUsernameFromProfileViewController(UIViewController *viewC
 static NSString *const kApolloGalleryMenuTitle = @"Gallery View";
 static NSString *const kApolloGalleryMenuSymbol = @"square.grid.2x2";
 
-// How long after the "..." tap an ActionController may still claim the arm.
-static const CFTimeInterval kApolloGalleryMenuArmGraceSeconds = 1.5;
+#pragma mark - Owner
 
-// The view controller whose "..." was just tapped, and when.
-static __weak UIViewController *sApolloGalleryArmedVC = nil;
-static CFTimeInterval sApolloGalleryArmedAt = 0.0;
-
-// Set on an ActionController once it has claimed the arm: an NSHashTable
-// holding the owning view controller weakly (a plain associated object
-// would keep the view controller alive).
-static char kApolloGalleryMenuOwnerKey;
-
-#pragma mark - Claiming
-
-// The view controller this ActionController belongs to, claiming the
-// pending arm the first time it's asked. Returns nil for every sheet that isn't
-// the subreddit/profile "..." menu. Safe to call more than once per controller —
-// only ApolloActionMenu's `matches` blocks below actually do, and they're
-// memoized to exactly once per sheet instance.
+// The feed or profile whose nav-bar "..." opened this sheet; nil for every
+// other sheet (the comments "..." also arms its screen as the owner).
 static UIViewController *ApolloGalleryMenuOwnerForController(id actionController) {
-    if (!actionController) return nil;
-
-    NSHashTable *holder = objc_getAssociatedObject(actionController, &kApolloGalleryMenuOwnerKey);
-    if (holder) return holder.anyObject;
-
-    UIViewController *armed = sApolloGalleryArmedVC;
-    if (!armed) return nil;
-    if (CACurrentMediaTime() - sApolloGalleryArmedAt > kApolloGalleryMenuArmGraceSeconds) {
-        sApolloGalleryArmedVC = nil;
-        return nil;
-    }
-
-    holder = [NSHashTable weakObjectsHashTable];
-    [holder addObject:armed];
-    objc_setAssociatedObject(actionController, &kApolloGalleryMenuOwnerKey, holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    // One-shot: consumed here so a second sheet opened later can't also claim it.
-    sApolloGalleryArmedVC = nil;
-    return armed;
+    UIViewController *owner = ApolloActionMenuOwnerForController(actionController);
+    Class postsClass = ApolloClassPostsViewController;
+    Class profileClass = ApolloClassProfileViewController;
+    if ((postsClass && [owner isKindOfClass:postsClass]) ||
+        (profileClass && [owner isKindOfClass:profileClass])) return owner;
+    return nil;
 }
 
 // "u/<name>" when the owner is a profile screen showing a resolvable user,
@@ -129,8 +100,8 @@ static NSString *ApolloGalleryMenuHomeIdentifierForOwner(UIViewController *owner
 // sentinel — whichever this screen's feed is. Nil for search results and every
 // other screen, which is what keeps the row off them.
 //
-// Every gate goes through this one function: the arm hook, the spec's `matches`
-// and the open path all have to agree on whether a screen has a gallery, and
+// Every gate goes through this one function: the prefetch hook, the spec's
+// `matches` and the open path all have to agree on whether a screen has a gallery, and
 // three hand-kept copies of the chain could drift apart.
 static NSString *ApolloGalleryMenuIdentifierForOwner(UIViewController *owner) {
     if (!owner) return nil;
@@ -265,17 +236,15 @@ static void ApolloGalleryMenuOpenForController(id actionController) {
     openGallery();
 }
 
-#pragma mark - Arming
+#pragma mark - Prefetch
 
 %hook _TtC6Apollo19PostsViewController
 
 - (void)moreOptionsBarButtonItemTappedWithSender:(id)sender {
-    // Only arm for feeds a gallery makes sense for; that keeps every other
-    // sheet (and every other feed type) completely untouched.
+    // Start loading the gallery while the menu opens, only for feeds a
+    // gallery makes sense for.
     NSString *identifier = ApolloGalleryMenuIdentifierForOwner((UIViewController *)self);
     if (identifier.length > 0) {
-        sApolloGalleryArmedVC = (UIViewController *)self;
-        sApolloGalleryArmedAt = CACurrentMediaTime();
         NSNumber *sort = nil;
         NSNumber *window = nil;
         ApolloGalleryMenuResolveInheritedSort((UIViewController *)self, &sort, &window);
@@ -283,32 +252,17 @@ static void ApolloGalleryMenuOpenForController(id actionController) {
                                             fromViewController:(UIViewController *)self
                                             inheritedSortValue:sort
                                        inheritedTopWindowValue:window];
-    } else {
-        sApolloGalleryArmedVC = nil;
     }
     %orig;
 }
 
 %end
 
-// Someone else's profile: Apollo's own "..." presents the Private Message /
-// Follow / Block sheet, which flows through the same ActionController (and, on
-// Liquid Glass, the same UIMenu conversion) as the subreddit menu — so the
-// identical arm-and-claim adds Gallery View there. The signed-in user's own
-// profile tab never shows this button; ApolloProfileMoreMenu.xm owns that side.
-%hook _TtC6Apollo21ProfileViewController
-
-- (void)moreOptionsBarButtonItemTappedWithSender:(id)sender {
-    if (ApolloGalleryMenuProfileIdentifierForOwner((UIViewController *)self).length > 0) {
-        sApolloGalleryArmedVC = (UIViewController *)self;
-        sApolloGalleryArmedAt = CACurrentMediaTime();
-    } else {
-        sApolloGalleryArmedVC = nil;
-    }
-    %orig;
-}
-
-%end
+// Someone else's profile needs no hook: Apollo's own "..." presents the Private
+// Message / Follow / Block sheet through the same ActionController (and, on
+// Liquid Glass, the same UIMenu conversion) as the subreddit menu, and the
+// profile is its owner. The signed-in user's own profile tab never shows this
+// button; ApolloProfileMoreMenu.xm owns that side.
 
 #pragma mark - Registration
 
