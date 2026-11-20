@@ -4,8 +4,9 @@
 // view's overflow menu. Row rendering on both the Liquid Glass UIMenu and the
 // legacy ActionController sheet is owned entirely by ApolloActionMenu.{h,xm} —
 // see that header for the single-owner rationale. This file supplies the
-// feature-specific parts: WHICH sheet is "the comments' ... menu" (arming
-// below), the title/icon toggling between Show and Hide, and what a tap does.
+// feature-specific parts: WHICH sheet is "the comments' ... menu" (its owner,
+// from ApolloActionMenuOwnerForController), the title/icon toggling between
+// Show and Hide, and what a tap does.
 //
 // Two behaviors, decided by the "Passive Deleted Comments" setting:
 //   - Passive OFF: the item is a plain shortcut for the global Show Deleted
@@ -24,6 +25,7 @@
 #import <objc/message.h>
 
 #import "ApolloActionMenu.h"
+#import "ApolloClasses.h"
 #import "ApolloCommon.h"
 #import "ApolloState.h"
 #import "ApolloSwiftRuntime.h"
@@ -32,21 +34,6 @@
 
 static NSString *const kApolloDCMenuShowTitle = @"Show Deleted Comments";
 static NSString *const kApolloDCMenuHideTitle = @"Hide Deleted Comments";
-
-// The comments VC currently presenting its "..." menu. Armed in the tap hook
-// below; menu construction happens synchronously inside that tap (see
-// ApolloActionMenu's per-controller `matches` memoization), but a short grace
-// window keeps this robust if UIKit ever defers a runloop turn. The FIRST menu
-// built while armed consumes the arm (the ActionController gets tagged with the
-// owning VC below), so a different menu opened moments later can never pick
-// up the item.
-static __weak id sApolloDCMenuArmedVC = nil;
-static CFAbsoluteTime sApolloDCMenuArmedAt = 0;
-
-// Tag on the ActionController that IS the comments "..." menu: a weak-objects
-// hash table holding the owning CommentsViewController (a plain weak assoc
-// isn't possible with objc_setAssociatedObject).
-static char kApolloDCMenuOwnerVCKey;
 
 // linkFullName key -> weak set of CommentsViewController instances currently
 // showing that post's thread. Main-thread only. When the last live VC for an
@@ -61,28 +48,12 @@ static NSHashTable *sApolloDCAllCommentsVCs = nil;
 
 #pragma mark - Helpers
 
-// Resolve and permanently tag the ActionController presenting the armed
-// comments menu. Both the ApolloActionMenu `matches` block and any later
-// re-ask (e.g. `title`, `perform`) use this same one-shot claim, whichever
-// asks first.
+// The comments VC whose nav-bar "..." opened this sheet; nil for every other
+// sheet (the feed and profile "..." arm their own screens as owners).
 static id ApolloDCMenuOwnerForController(id actionController) {
-    if (!actionController) return nil;
-    NSHashTable *holder = objc_getAssociatedObject(actionController, &kApolloDCMenuOwnerVCKey);
-    if (holder) return holder.anyObject;
-
-    id vc = sApolloDCMenuArmedVC;
-    if (!vc) return nil;
-    if (CFAbsoluteTimeGetCurrent() - sApolloDCMenuArmedAt > 1.5) {
-        sApolloDCMenuArmedVC = nil;
-        return nil;
-    }
-
-    holder = [NSHashTable weakObjectsHashTable];
-    [holder addObject:vc];
-    objc_setAssociatedObject(actionController, &kApolloDCMenuOwnerVCKey,
-                             holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    sApolloDCMenuArmedVC = nil;
-    return vc;
+    UIViewController *owner = ApolloActionMenuOwnerForController(actionController);
+    Class commentsClass = ApolloClassCommentsViewController;
+    return commentsClass && [owner isKindOfClass:commentsClass] ? owner : nil;
 }
 
 // Post fullName (t3_xxx, lowercased) for a CommentsViewController, from its
@@ -231,14 +202,6 @@ static BOOL ApolloDCMenuResolveState(id actionController, id *outVC,
 #pragma mark - CommentsViewController lifecycle
 
 %hook _TtC6Apollo22CommentsViewController
-
-- (void)moreOptionsBarButtonItemTappedWithSender:(id)sender {
-    sApolloDCMenuArmedVC = self;
-    sApolloDCMenuArmedAt = CFAbsoluteTimeGetCurrent();
-    %orig;
-    // The arm is consumed by the first menu build (see ApolloDCMenuOwnerForController);
-    // the timestamp grace window expires it if no menu was built at all.
-}
 
 - (void)viewDidAppear:(BOOL)animated {
     %orig;

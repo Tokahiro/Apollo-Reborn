@@ -218,8 +218,6 @@ void ApolloPaneSetComfortableFeed(UIViewController *controller, BOOL comfortable
 static char kPaneDensityPrepared;
 static char kPaneOriginalExtendedEdges;
 static char kPaneHeaderColor;
-static char kPaneMenuOwner;
-static __weak UIViewController *sPaneMenuOwner;
 
 void ApolloPaneApplySearchPlacement(UIViewController *controller) {
     if (!controller.navigationItem.searchController) return;
@@ -302,22 +300,11 @@ void ApolloPaneInstallChromeForController(UIViewController *controller) {
     }
 }
 
-UIViewController *ApolloPaneSetMenuOwner(UIViewController *controller) {
-    UIViewController *previous = sPaneMenuOwner;
-    sPaneMenuOwner = ApolloPaneSplitControllerFor(controller) ? controller : nil;
-    return previous;
-}
-
-void ApolloPaneCaptureMenuOwner(id actionController) {
-    if (!sPaneMenuOwner || ![actionController isKindOfClass:objc_getClass("_TtC6Apollo16ActionController")]) return;
-    if (objc_getAssociatedObject(actionController, &kPaneMenuOwner)) return;
-    NSHashTable *owner = [NSHashTable weakObjectsHashTable];
-    [owner addObject:sPaneMenuOwner];
-    objc_setAssociatedObject(actionController, &kPaneMenuOwner, owner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
+// The screen inside a pane whose nav-bar ••• opened this sheet; the callers
+// check its class.
 static UIViewController *ApolloPaneMenuOwner(id actionController) {
-    return [objc_getAssociatedObject(actionController, &kPaneMenuOwner) anyObject];
+    UIViewController *owner = ApolloActionMenuOwnerForController(actionController);
+    return ApolloPaneSplitControllerFor(owner) ? owner : nil;
 }
 
 @interface ApolloPaneViewOption : NSObject

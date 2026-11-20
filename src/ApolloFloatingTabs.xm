@@ -82,6 +82,7 @@
 #import "ApolloUserFlair.h"
 #import "ApolloFloatingTabsCrests.h"
 #import "ApolloActionMenu.h"
+#import "ApolloClasses.h"
 #import "ApolloCommon.h"
 #import "ApolloMemoryDiagnostics.h"
 #import "ApolloDeviceDisplay.h"
@@ -2396,39 +2397,23 @@ void ApolloFloatingTabsDebugCommand(NSString *payload);
 // MARK: - Comments "..." menu row + VC lifecycle hooks
 // =============================================================================
 
-// The comments VC currently presenting its "..." menu. Mirrors the armed-VC
-// one-shot claim pattern documented in ApolloDeletedCommentsMenu.xm (each
-// feature keeps its own arm + associated tag; they compose independently).
-static __weak id sApolloFTArmedVC = nil;
-static CFAbsoluteTime sApolloFTArmedAt = 0;
-static char kApolloFTMenuOwnerVCKey;
-
 // The FEED surface: tapping ••• (or long-pressing) on a post cell arms the
 // cell's RDKLink instead of a VC — the resulting tab is a cold tab (opens via
-// the URL router; there's no comments screen to retain yet). Same one-shot
-// claim pattern, separate arm so the two surfaces compose independently.
+// the URL router; there's no comments screen to retain yet). The first sheet
+// built inside the grace window claims the arm.
 static __weak id sApolloFTArmedLink = nil;
 static __weak UIViewController *sApolloFTArmedLinkPresenter = nil;  // cap-alert host
 static CFAbsoluteTime sApolloFTArmedLinkAt = 0;
 static char kApolloFTMenuOwnerLinkKey;
 
+// The COMMENTS surface: the comments VC whose nav-bar "..." opened this
+// sheet. Never the media-owned glass comments pane: it shares the class but is
+// not "the post's screen" (see ApolloSwipeUpComments).
 static id ApolloFTMenuOwnerForController(id actionController) {
-    if (!actionController) return nil;
-    NSHashTable *holder = objc_getAssociatedObject(actionController, &kApolloFTMenuOwnerVCKey);
-    if (holder) return holder.anyObject;
-
-    id vc = sApolloFTArmedVC;
-    if (!vc) return nil;
-    if (CFAbsoluteTimeGetCurrent() - sApolloFTArmedAt > 1.5) {
-        sApolloFTArmedVC = nil;
-        return nil;
-    }
-    holder = [NSHashTable weakObjectsHashTable];
-    [holder addObject:vc];
-    objc_setAssociatedObject(actionController, &kApolloFTMenuOwnerVCKey,
-                             holder, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    sApolloFTArmedVC = nil;
-    return vc;
+    UIViewController *owner = ApolloActionMenuOwnerForController(actionController);
+    Class commentsClass = ApolloClassCommentsViewController;
+    if (!commentsClass || ![owner isKindOfClass:commentsClass]) return nil;
+    return ApolloSwipeCommentsIsPaneCommentsController(owner) ? nil : owner;
 }
 
 static id ApolloFTMenuLinkForController(id actionController) {
@@ -2632,16 +2617,6 @@ static void ApolloFTMenuPerform(id actionController) {
 %end
 
 %hook _TtC6Apollo22CommentsViewController
-
-- (void)moreOptionsBarButtonItemTappedWithSender:(id)sender {
-    // Never arm from the media-owned glass comments pane (it shares this class
-    // but is not "the post's screen" — see ApolloSwipeUpComments).
-    if (sFloatingPostTabs && !ApolloSwipeCommentsIsPaneCommentsController((UIViewController *)self)) {
-        sApolloFTArmedVC = self;
-        sApolloFTArmedAt = CFAbsoluteTimeGetCurrent();
-    }
-    %orig;
-}
 
 // A comments screen coming on screen may be the one a cold tab (or a tab whose
 // retained screen is off-screen) should hold from now on.
