@@ -162,7 +162,7 @@ void ApolloActionMenuCaptureContextForController(id actionController);
 // The exact captured tap context for a controller. Feature specs can constrain
 // themselves to one menu without another tap hook or title heuristics.
 NSString *_Nullable ApolloActionMenuContextForController(id actionController);
-// Called by a tap entry point next to its context arm/disarm: the view
+// Called by a nav-bar ••• tap entry point around its %orig: the view
 // controller whose ••• is building a sheet, or nil to clear it.
 void ApolloActionMenuArmOwner(UIViewController *_Nullable owner);
 // The view controller whose ••• opened this sheet, held weakly; nil when its
