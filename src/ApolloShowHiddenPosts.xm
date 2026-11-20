@@ -6,18 +6,38 @@
 // Every post listing Apollo loads goes through RDKClient's listing method, first
 // pages and later pages alike, so the parameter is added there, for single
 // subreddits only. Home, Popular, All and multireddits keep hiding.
+//
+// Settings > Features > Subreddits sets the default. A subreddit's ••• menu
+// flips it for that subreddit until the app quits.
 
-#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+#import <objc/message.h>
 
+#import "ApolloAccountCredentials.h"
+#import "ApolloActionMenu.h"
+#import "ApolloActionMenuLayout.h"
 #import "ApolloCommon.h"
 #import "ApolloShowHiddenPosts.h"
 #import "ApolloState.h"
+#import "ApolloSwiftRuntime.h"
+
+// Defined in ApolloSubredditHeaders.xm: the slug of a single-subreddit feed.
+extern NSString *ApolloSubredditNameFromViewController(UIViewController *viewController);
 
 @interface RDKClient : NSObject
 @end
 
+// Lowercased subreddit name -> @YES/@NO for subreddits whose ••• item differs
+// from the setting. Listings can start off the main thread, so access is locked.
+static NSMutableDictionary<NSString *, NSNumber *> *sApolloShowHiddenOverrides;
+
 static BOOL ApolloShowHiddenPostsEnabledForSubreddit(NSString *subreddit) {
-    return subreddit.length > 0 && sShowHiddenPostsInSubreddits;
+    if (subreddit.length == 0) return NO;
+    @synchronized (sApolloShowHiddenOverrides) {
+        NSNumber *override = sApolloShowHiddenOverrides[subreddit];
+        if (override) return override.boolValue;
+    }
+    return sShowHiddenPostsInSubreddits;
 }
 
 %hook RDKClient
@@ -30,3 +50,62 @@ static BOOL ApolloShowHiddenPostsEnabledForSubreddit(NSString *subreddit) {
 }
 
 %end
+
+#pragma mark - ••• menu
+
+// The subreddit a feed's ••• sheet belongs to, when it is a single subreddit
+// and an account is signed in (signed out, nothing is hidden). Nil otherwise.
+static NSString *ApolloShowHiddenMenuSubreddit(id actionController) {
+    if (![ApolloActionMenuContextForController(actionController) isEqualToString:ApolloActionMenuContextFeed]) return nil;
+    if (ApolloActiveAccountUsername().length == 0) return nil;
+    UIViewController *feed = ApolloActionMenuOwnerForController(actionController);
+    NSString *name = feed ? ApolloSubredditNameFromViewController(feed) : nil;
+    // Same exclusions as the request hook (Popular and All are subreddit-typed feeds).
+    return name.length > 0 ? ApolloShowHiddenSubredditForListingPath([@"r/" stringByAppendingString:name]) : nil;
+}
+
+static void ApolloShowHiddenMenuToggle(id actionController) {
+    NSString *subreddit = ApolloShowHiddenMenuSubreddit(actionController);
+    UIViewController *feed = ApolloActionMenuOwnerForController(actionController);
+    if (!subreddit || !feed) return;
+
+    BOOL show = !ApolloShowHiddenPostsEnabledForSubreddit(subreddit);
+    @synchronized (sApolloShowHiddenOverrides) {
+        // Back at the setting's value, the setting decides again.
+        sApolloShowHiddenOverrides[subreddit] = show == sShowHiddenPostsInSubreddits ? nil : @(show);
+    }
+    ApolloLog(@"[ShowHidden] r/%@: hidden posts %@ from the ••• menu", subreddit, show ? @"shown" : @"hidden");
+
+    SEL refresh = @selector(refreshControlActivatedWithSender:);
+    if ([feed respondsToSelector:refresh]) {
+        ((void (*)(id, SEL, id))objc_msgSend)(feed, refresh, ApolloReadObjectIvar(feed, "refreshControl"));
+    }
+}
+
+%ctor {
+    %init;
+    sApolloShowHiddenOverrides = [NSMutableDictionary dictionary];
+
+    ApolloActionMenuSpec *spec = [ApolloActionMenuSpec new];
+    spec.identifier = @"ShowHiddenPosts";
+    spec.legacyDismissesSheet = YES;
+    spec.matches = ^BOOL(id actionController, NSString *menuTitle) {
+        (void)menuTitle;
+        return ApolloShowHiddenMenuSubreddit(actionController) != nil;
+    };
+    spec.title = ^NSString *(id actionController, UITableViewCell *donor) {
+        (void)donor;
+        return ApolloShowHiddenPostsEnabledForSubreddit(ApolloShowHiddenMenuSubreddit(actionController))
+            ? @"Hide Hidden Posts" : @"Show Hidden Posts";
+    };
+    spec.image = ^UIImage *(id actionController, UITableViewCell *donor) {
+        (void)donor;
+        NSString *symbol = ApolloShowHiddenPostsEnabledForSubreddit(ApolloShowHiddenMenuSubreddit(actionController))
+            ? @"eye.slash" : @"eye";
+        return ApolloActionMenuSymbolIcon(symbol) ?: [UIImage systemImageNamed:symbol];
+    };
+    spec.perform = ^(id actionController) {
+        ApolloShowHiddenMenuToggle(actionController);
+    };
+    ApolloActionMenuRegister(spec);
+}
