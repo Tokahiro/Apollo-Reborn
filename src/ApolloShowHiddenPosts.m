@@ -22,9 +22,11 @@ NSString *ApolloShowHiddenSubredditForListingPath(NSString *path) {
 
     NSString *name = parts[1].lowercaseString;
     if (name.length == 0 || [name containsString:@"+"]) return nil;
-    // Feeds that span many communities; "all-a-b" is r/all with subreddits filtered out.
+    // Feeds that span many communities; "all-a-b" is r/all with subreddits
+    // filtered out. A Random feed moves to a new community on every refresh.
     if ([name isEqualToString:@"all"] || [name hasPrefix:@"all-"] || [name isEqualToString:@"popular"] ||
-        [name isEqualToString:@"mod"] || [name isEqualToString:@"friends"]) {
+        [name isEqualToString:@"mod"] || [name isEqualToString:@"friends"] ||
+        [name isEqualToString:@"random"] || [name isEqualToString:@"randnsfw"]) {
         return nil;
     }
     return name;

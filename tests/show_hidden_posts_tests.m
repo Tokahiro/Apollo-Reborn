@@ -21,8 +21,8 @@ static void TestSubredditListings(void) {
     for (NSString *sort in @[ @"hot", @"new", @"rising", @"top", @"controversial", @"best", @"gilded" ]) {
         ExpectName([NSString stringWithFormat:@"r/apple/%@.json", sort], @"apple");
     }
-    ExpectName(@"r/random/hot.json", @"random");
     ExpectName(@"r/allergies/hot.json", @"allergies");
+    ExpectName(@"r/randomthoughts/new.json", @"randomthoughts");
     ExpectName(@"r/popularopinion/new.json", @"popularopinion");
 }
 
@@ -37,6 +37,8 @@ static void TestOtherFeeds(void) {
     ExpectName(@"r/popular/hot.json", nil);
     ExpectName(@"r/mod/new.json", nil);
     ExpectName(@"r/friends/new.json", nil);
+    ExpectName(@"r/random/hot.json", nil);
+    ExpectName(@"r/RandNSFW/hot.json", nil);
     ExpectName(@"r/apple+android/hot.json", nil);
     ExpectName(@"user/someone/m/tech/hot.json", nil);
     ExpectName(@"r/apple/search.json", nil);

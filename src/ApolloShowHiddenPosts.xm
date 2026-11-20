@@ -21,7 +21,9 @@
 #import "ApolloState.h"
 #import "ApolloSwiftRuntime.h"
 
-// Defined in ApolloSubredditHeaders.xm: the slug of a single-subreddit feed.
+// Defined in ApolloSubredditHeaders.xm: the feed's PostsType case (0 is a
+// single subreddit; -1 when unreadable) and the slug it shows.
+extern NSInteger ApolloPostsTypeTagFromViewController(UIViewController *viewController);
 extern NSString *ApolloSubredditNameFromViewController(UIViewController *viewController);
 
 @interface RDKClient : NSObject
@@ -59,7 +61,10 @@ static NSString *ApolloShowHiddenMenuSubreddit(id actionController) {
     if (![ApolloActionMenuContextForController(actionController) isEqualToString:ApolloActionMenuContextFeed]) return nil;
     if (ApolloActiveAccountUsername().length == 0) return nil;
     UIViewController *feed = ApolloActionMenuOwnerForController(actionController);
-    NSString *name = feed ? ApolloSubredditNameFromViewController(feed) : nil;
+    // A Random feed names the community it shows, but loads r/random, which
+    // the request hook leaves alone.
+    if (ApolloPostsTypeTagFromViewController(feed) != 0) return nil;
+    NSString *name = ApolloSubredditNameFromViewController(feed);
     // Same exclusions as the request hook (Popular and All are subreddit-typed feeds).
     return name.length > 0 ? ApolloShowHiddenSubredditForListingPath([@"r/" stringByAppendingString:name]) : nil;
 }
