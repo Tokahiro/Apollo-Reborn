@@ -66,24 +66,42 @@ NSNumber *ApolloShowHiddenChoiceForSubreddit(NSString *subreddit, BOOL useSaved,
     return [saved isKindOfClass:[NSNumber class]] ? saved : nil;
 }
 
+// Caller holds the session lock. Saved entries equal to `setting` are removed.
+static void ApolloShowHiddenSaveChoices(NSDictionary<NSString *, NSNumber *> *choices, BOOL setting, NSUserDefaults *defaults) {
+    NSMutableDictionary *saved = [ApolloShowHiddenSavedChoices(defaults) mutableCopy];
+    [choices enumerateKeysAndObjectsUsingBlock:^(NSString *key, NSNumber *show, __unused BOOL *stop) {
+        saved[key] = show.boolValue == setting ? nil : show;
+    }];
+    [defaults setObject:saved forKey:UDKeyShowHiddenPostsSubredditChoices];
+}
+
 void ApolloShowHiddenSetChoiceForSubreddit(NSString *subreddit, BOOL show, BOOL setting, BOOL remember, NSUserDefaults *defaults) {
     if (subreddit.length == 0) return;
     NSString *key = subreddit.lowercaseString;
-    NSNumber *choice = show == setting ? nil : @(show);
     NSMutableDictionary *session = ApolloShowHiddenSessionChoices();
     @synchronized (session) {
-        session[key] = choice;
+        // Kept even when it equals the setting, so it still wins over an older
+        // saved choice if remembering is turned on later in this launch.
+        session[key] = @(show);
         // Without remember, a saved choice is left as it is: it doesn't apply
         // while remembering is off, and comes back if it's turned on again.
-        if (!remember) return;
-        NSMutableDictionary *saved = [ApolloShowHiddenSavedChoices(defaults) mutableCopy];
-        saved[key] = choice;
-        [defaults setObject:saved forKey:UDKeyShowHiddenPostsSubredditChoices];
+        if (remember) ApolloShowHiddenSaveChoices(@{ key: @(show) }, setting, defaults);
     }
 }
 
-NSUInteger ApolloShowHiddenSavedChoiceCount(NSUserDefaults *defaults) {
-    return ApolloShowHiddenSavedChoices(defaults).count;
+void ApolloShowHiddenSaveSessionChoices(BOOL setting, NSUserDefaults *defaults) {
+    NSMutableDictionary *session = ApolloShowHiddenSessionChoices();
+    @synchronized (session) {
+        if (session.count > 0) ApolloShowHiddenSaveChoices(session, setting, defaults);
+    }
+}
+
+NSUInteger ApolloShowHiddenSavedChoiceCount(BOOL setting, NSUserDefaults *defaults) {
+    __block NSUInteger count = 0;
+    [ApolloShowHiddenSavedChoices(defaults) enumerateKeysAndObjectsUsingBlock:^(__unused id key, id show, __unused BOOL *stop) {
+        if ([show isKindOfClass:[NSNumber class]] && [show boolValue] != setting) count++;
+    }];
+    return count;
 }
 
 void ApolloShowHiddenClearChoices(NSUserDefaults *defaults) {

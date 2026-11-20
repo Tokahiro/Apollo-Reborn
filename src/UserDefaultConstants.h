@@ -108,8 +108,8 @@ static NSString *const UDKeyShowHiddenPostsInSubreddits = @"ShowHiddenPostsInSub
 // Keep a subreddit's ••• Show/Hide Hidden Posts choice after the app quits.
 // Default OFF: a choice lasts until the app quits.
 static NSString *const UDKeyShowHiddenPostsRememberPerSubreddit = @"ShowHiddenPostsRememberPerSubreddit";
-// Saved ••• choices: lowercased subreddit name -> @YES/@NO. Only entries that
-// differ from UDKeyShowHiddenPostsInSubreddits are kept.
+// Saved ••• choices: lowercased subreddit name -> @YES/@NO. A choice equal to
+// UDKeyShowHiddenPostsInSubreddits when it's made removes the entry.
 static NSString *const UDKeyShowHiddenPostsSubredditChoices = @"ShowHiddenPostsSubredditChoices";
 // Per-account sorting preferences, keyed by the per-account favorites identity
 // (u:name / anonymous). Missing entries default OFF; shared preference is above.

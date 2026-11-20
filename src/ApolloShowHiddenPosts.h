@@ -17,12 +17,16 @@ NSString *_Nullable ApolloShowHiddenSubredditForListingPath(NSString *_Nullable 
 NSDictionary *ApolloShowHiddenListingParameters(NSDictionary *_Nullable parameters);
 
 // Choices made in a subreddit's ••• menu, keyed by lowercased subreddit name.
-// A choice lasts until the app quits; with `remember` it is also saved in
-// `defaults` and applies after a restart while `useSaved` is set. A choice
-// equal to `setting` is removed, so the setting decides again. Any thread.
+// A choice lasts until the app quits and wins over a saved one. With
+// `remember` it is also saved in `defaults`, and applies after a restart while
+// `useSaved` is set; a choice equal to `setting` removes the saved one, so the
+// setting decides again. Any thread.
 NSNumber *_Nullable ApolloShowHiddenChoiceForSubreddit(NSString *subreddit, BOOL useSaved, NSUserDefaults *defaults);
 void ApolloShowHiddenSetChoiceForSubreddit(NSString *subreddit, BOOL show, BOOL setting, BOOL remember, NSUserDefaults *defaults);
-NSUInteger ApolloShowHiddenSavedChoiceCount(NSUserDefaults *defaults);
+// Saves this launch's choices, for when remembering is turned on.
+void ApolloShowHiddenSaveSessionChoices(BOOL setting, NSUserDefaults *defaults);
+// Saved choices that differ from `setting`, the ones that change something.
+NSUInteger ApolloShowHiddenSavedChoiceCount(BOOL setting, NSUserDefaults *defaults);
 // Removes this launch's choices and the saved ones.
 void ApolloShowHiddenClearChoices(NSUserDefaults *defaults);
 

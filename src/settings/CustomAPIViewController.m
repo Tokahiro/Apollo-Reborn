@@ -3265,6 +3265,8 @@ static NSInteger ApolloHeaderStylePickerValue(NSInteger index, BOOL blurAvailabl
                                       sShowHiddenPostsInSubreddits = sender.isOn;
                                       [[NSUserDefaults standardUserDefaults] setBool:sender.isOn
                                                                               forKey:UDKeyShowHiddenPostsInSubreddits];
+                                      // Which saved choices still differ, and so the Reset row, depends on it.
+                                      [weakSelf visibilityDidChange];
                                   }];
     ApolloSettingsRow *rememberPerSubreddit =
         [ApolloSettingsRow switchRowWithID:@"sub.showHiddenPostsRemember"
@@ -3274,6 +3276,12 @@ static NSInteger ApolloHeaderStylePickerValue(NSInteger index, BOOL blurAvailabl
                                       sShowHiddenPostsRememberPerSubreddit = sender.isOn;
                                       [[NSUserDefaults standardUserDefaults] setBool:sender.isOn
                                                                               forKey:UDKeyShowHiddenPostsRememberPerSubreddit];
+                                      // Choices made earlier in this launch are kept too.
+                                      if (sender.isOn) {
+                                          ApolloShowHiddenSaveSessionChoices(sShowHiddenPostsInSubreddits,
+                                                                             [NSUserDefaults standardUserDefaults]);
+                                      }
+                                      [weakSelf visibilityDidChange];
                                   }];
     ApolloSettingsRow *resetChoices =
         [ApolloSettingsRow buttonRowWithID:@"sub.showHiddenPostsReset"
@@ -3282,7 +3290,7 @@ static NSInteger ApolloHeaderStylePickerValue(NSInteger index, BOOL blurAvailabl
             [weakSelf promptResetShowHiddenChoicesFromSourceView:[weakSelf cellForRowID:@"sub.showHiddenPostsReset"]];
         }];
     resetChoices.visible = ^BOOL {
-        return ApolloShowHiddenSavedChoiceCount([NSUserDefaults standardUserDefaults]) > 0;
+        return ApolloShowHiddenSavedChoiceCount(sShowHiddenPostsInSubreddits, [NSUserDefaults standardUserDefaults]) > 0;
     };
 
     return [ApolloSettingsSection sectionWithTitle:@"Subreddit Feeds"
