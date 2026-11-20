@@ -664,5 +664,16 @@ else
 endif
 	@rm $(THEOS_STAGING_DIR)/Library/MobileSubstrate/DynamicLibraries/libflex.plist
 
+# Theos has implicit rules that write X.m or X.mm from X.xm, X.xmm or X.l.mm
+# with Logos (theos/makefiles/rules.mk), so a hand-written X.m or X.mm next to
+# one of those is overwritten at build time. Name the hooks file differently
+# (X.m + XHooks.xm).
+APOLLO_LOGOS_STEMS := $(basename $(filter %.xm %.xmm,$(ApolloReborn_FILES))) $(patsubst %.l.mm,%,$(filter %.l.mm,$(ApolloReborn_FILES)))
+APOLLO_PLAIN_STEMS := $(basename $(filter-out %.l.mm,$(filter %.m %.mm,$(ApolloReborn_FILES))))
+APOLLO_SHARED_STEMS := $(sort $(filter $(APOLLO_LOGOS_STEMS),$(APOLLO_PLAIN_STEMS)))
+ifneq ($(APOLLO_SHARED_STEMS),)
+$(error Theos would overwrite these sources with Logos output: $(APOLLO_SHARED_STEMS). Rename the Logos file)
+endif
+
 include $(THEOS_MAKE_PATH)/aggregate.mk
 include $(THEOS_MAKE_PATH)/tweak.mk

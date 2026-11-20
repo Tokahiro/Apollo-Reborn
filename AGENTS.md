@@ -36,6 +36,11 @@ make package
 ```
 
 The Makefile automatically generates `src/Version.h` from the `control` file and links FFmpegKit libraries.
+
+A hand-written `X.m` or `X.mm` must not share its name with a Logos file (`X.xm`, `X.xmm`, `X.l.mm`): Theos would overwrite it with Logos output, so the Makefile stops the build. Name the hooks file `XHooks.xm`.
+
+Without a Mac (Linux, cloud sessions), `scripts/check-compile-linux.sh` compiles the tweak's C and Objective-C sources for iOS and reports functions called with C linkage but defined with C++ linkage (or the reverse). The source list, flags, SDK version and deployment target come from this Makefile, evaluated with the Theos commit `build-ipa.yml` pins; the SDK is a third-party copy from xybp888/iOS-SDKs. Downloads (about 330 MB) go once into `~/.cache/apollo-ios-check`; the first run takes about two minutes, later runs rebuild only what changed. It compiles without `-fmodules` (LLVM's clang can't build the SDK's modules), skips Swift and code behind `__has_include("ApolloReborn-Swift.h")`, and doesn't link or package, so CI stays the final check.
+
 `THEOS` is available at `~/theos`. Do not rely on Azule/Cyan living in `/tmp`; `build-ipa.sh` uses the repo-local `scripts/inject-deb-local.sh` first for this repo's already-injected `Apollo-base.ipa` flow, then falls back to `azule`/`cyan` only for truly stock IPAs.
 
 **macOS 27 / Apple Silicon without Rosetta:** azule's bundled helpers (`~/Azule/bin/darwin/{ldid,insert_dylib,jq}`) are x86_64-only and upstream has not shipped arm64 builds, so azule fails with `Bad CPU type in executable` once Rosetta is gone. Replace them in place with arm64 builds (`brew install ldid jq` and symlink those two; compile `insert_dylib` from Tyilo/insert_dylib `main.c` with `clang -arch arm64`). They must live in that directory because azule prepends it to `PATH`. Separately, Xcode 27's `lipo` only recognizes the bundled CydiaSubstrate's legacy arm64e slice as `arm64e.old`; `scripts/modules/strip-substrate-arm64e.sh` handles both spellings and fails the build (rather than warning) if the slice cannot be removed, since shipping it aborts at launch on arm64e iOS 26 devices.
