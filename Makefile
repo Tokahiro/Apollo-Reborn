@@ -98,7 +98,7 @@ ApolloReborn_FILES = \
     $(SRC_DIR)/ApolloProfilePagination.xm \
     $(SRC_DIR)/ApolloListEmptyState.xm \
     $(SRC_DIR)/ApolloShowHiddenPosts.m \
-    $(SRC_DIR)/ApolloShowHiddenPosts.xm \
+    $(SRC_DIR)/ApolloShowHiddenPostsHooks.xm \
     $(SRC_DIR)/ApolloEmptyFeedNextPage.xm \
     $(SRC_DIR)/ApolloPasscodeLockPrompt.xm \
     $(SRC_DIR)/ApolloWebTextDecoding.m \
