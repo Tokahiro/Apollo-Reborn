@@ -16,6 +16,16 @@ NSString *_Nullable ApolloShowHiddenSubredditForListingPath(NSString *_Nullable 
 // account has hidden in a listing.
 NSDictionary *ApolloShowHiddenListingParameters(NSDictionary *_Nullable parameters);
 
+// Choices made in a subreddit's ••• menu, keyed by lowercased subreddit name.
+// A choice lasts until the app quits; with `remember` it is also saved in
+// `defaults` and applies after a restart while `useSaved` is set. A choice
+// equal to `setting` is removed, so the setting decides again. Any thread.
+NSNumber *_Nullable ApolloShowHiddenChoiceForSubreddit(NSString *subreddit, BOOL useSaved, NSUserDefaults *defaults);
+void ApolloShowHiddenSetChoiceForSubreddit(NSString *subreddit, BOOL show, BOOL setting, BOOL remember, NSUserDefaults *defaults);
+NSUInteger ApolloShowHiddenSavedChoiceCount(NSUserDefaults *defaults);
+// Removes this launch's choices and the saved ones.
+void ApolloShowHiddenClearChoices(NSUserDefaults *defaults);
+
 #ifdef __cplusplus
 }
 #endif

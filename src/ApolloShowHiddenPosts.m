@@ -1,4 +1,5 @@
 #import "ApolloShowHiddenPosts.h"
+#import "UserDefaultConstants.h"
 
 NSString *ApolloShowHiddenSubredditForListingPath(NSString *path) {
     NSString *trimmed = [path stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"/"]];
@@ -36,4 +37,59 @@ NSDictionary *ApolloShowHiddenListingParameters(NSDictionary *parameters) {
     NSMutableDictionary *result = [parameters isKindOfClass:[NSDictionary class]] ? [parameters mutableCopy] : [NSMutableDictionary dictionary];
     result[@"show"] = @"all";
     return result;
+}
+
+// This launch's choices. Listings start on background queues, so every access
+// to it, and every read-modify-write of the saved choices, holds the lock.
+static NSMutableDictionary<NSString *, NSNumber *> *ApolloShowHiddenSessionChoices(void) {
+    static NSMutableDictionary *choices;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{ choices = [NSMutableDictionary dictionary]; });
+    return choices;
+}
+
+static NSDictionary<NSString *, NSNumber *> *ApolloShowHiddenSavedChoices(NSUserDefaults *defaults) {
+    NSDictionary *saved = [defaults dictionaryForKey:UDKeyShowHiddenPostsSubredditChoices];
+    return [saved isKindOfClass:[NSDictionary class]] ? saved : @{};
+}
+
+NSNumber *ApolloShowHiddenChoiceForSubreddit(NSString *subreddit, BOOL useSaved, NSUserDefaults *defaults) {
+    if (subreddit.length == 0) return nil;
+    NSString *key = subreddit.lowercaseString;
+    NSMutableDictionary *session = ApolloShowHiddenSessionChoices();
+    @synchronized (session) {
+        NSNumber *choice = session[key];
+        if (choice) return choice;
+    }
+    if (!useSaved) return nil;
+    id saved = ApolloShowHiddenSavedChoices(defaults)[key];
+    return [saved isKindOfClass:[NSNumber class]] ? saved : nil;
+}
+
+void ApolloShowHiddenSetChoiceForSubreddit(NSString *subreddit, BOOL show, BOOL setting, BOOL remember, NSUserDefaults *defaults) {
+    if (subreddit.length == 0) return;
+    NSString *key = subreddit.lowercaseString;
+    NSNumber *choice = show == setting ? nil : @(show);
+    NSMutableDictionary *session = ApolloShowHiddenSessionChoices();
+    @synchronized (session) {
+        session[key] = choice;
+        // Without remember, a saved choice is left as it is: it doesn't apply
+        // while remembering is off, and comes back if it's turned on again.
+        if (!remember) return;
+        NSMutableDictionary *saved = [ApolloShowHiddenSavedChoices(defaults) mutableCopy];
+        saved[key] = choice;
+        [defaults setObject:saved forKey:UDKeyShowHiddenPostsSubredditChoices];
+    }
+}
+
+NSUInteger ApolloShowHiddenSavedChoiceCount(NSUserDefaults *defaults) {
+    return ApolloShowHiddenSavedChoices(defaults).count;
+}
+
+void ApolloShowHiddenClearChoices(NSUserDefaults *defaults) {
+    NSMutableDictionary *session = ApolloShowHiddenSessionChoices();
+    @synchronized (session) {
+        [session removeAllObjects];
+        [defaults removeObjectForKey:UDKeyShowHiddenPostsSubredditChoices];
+    }
 }

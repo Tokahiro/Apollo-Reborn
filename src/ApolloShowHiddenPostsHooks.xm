@@ -8,7 +8,8 @@
 // subreddits only. Home, Popular, All and multireddits keep hiding.
 //
 // Settings > Features > Subreddits sets the default. A subreddit's ••• menu
-// flips it for that subreddit until the app quits.
+// flips it for that subreddit until the app quits, or for good with Remember
+// Per Subreddit (choices are kept in ApolloShowHiddenPosts.m).
 
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
@@ -29,17 +30,12 @@ extern NSString *ApolloSubredditNameFromViewController(UIViewController *viewCon
 @interface RDKClient : NSObject
 @end
 
-// Lowercased subreddit name -> @YES/@NO for subreddits whose ••• item differs
-// from the setting. Listings can start off the main thread, so access is locked.
-static NSMutableDictionary<NSString *, NSNumber *> *sApolloShowHiddenOverrides;
-
+// The subreddit's ••• choice if it has one, else the setting.
 static BOOL ApolloShowHiddenPostsEnabledForSubreddit(NSString *subreddit) {
     if (subreddit.length == 0) return NO;
-    @synchronized (sApolloShowHiddenOverrides) {
-        NSNumber *override = sApolloShowHiddenOverrides[subreddit];
-        if (override) return override.boolValue;
-    }
-    return sShowHiddenPostsInSubreddits;
+    NSNumber *choice = ApolloShowHiddenChoiceForSubreddit(subreddit, sShowHiddenPostsRememberPerSubreddit,
+                                                          [NSUserDefaults standardUserDefaults]);
+    return choice ? choice.boolValue : sShowHiddenPostsInSubreddits;
 }
 
 %hook RDKClient
@@ -75,11 +71,10 @@ static void ApolloShowHiddenMenuToggle(id actionController) {
     if (!subreddit || !feed) return;
 
     BOOL show = !ApolloShowHiddenPostsEnabledForSubreddit(subreddit);
-    @synchronized (sApolloShowHiddenOverrides) {
-        // Back at the setting's value, the setting decides again.
-        sApolloShowHiddenOverrides[subreddit] = show == sShowHiddenPostsInSubreddits ? nil : @(show);
-    }
-    ApolloLog(@"[ShowHidden] r/%@: hidden posts %@ from the ••• menu", subreddit, show ? @"shown" : @"hidden");
+    ApolloShowHiddenSetChoiceForSubreddit(subreddit, show, sShowHiddenPostsInSubreddits,
+                                          sShowHiddenPostsRememberPerSubreddit, [NSUserDefaults standardUserDefaults]);
+    ApolloLog(@"[ShowHidden] r/%@: hidden posts %@ from the ••• menu%@", subreddit, show ? @"shown" : @"hidden",
+              sShowHiddenPostsRememberPerSubreddit ? @" (saved)" : @"");
 
     SEL refresh = @selector(refreshControlActivatedWithSender:);
     if ([feed respondsToSelector:refresh]) {
@@ -89,7 +84,6 @@ static void ApolloShowHiddenMenuToggle(id actionController) {
 
 %ctor {
     %init;
-    sApolloShowHiddenOverrides = [NSMutableDictionary dictionary];
 
     ApolloActionMenuSpec *spec = [ApolloActionMenuSpec new];
     spec.identifier = @"ShowHiddenPosts";
